@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { SolidSpec } from './types';
 import {
   extrusionHeight,
+  placePrism,
   placeSolid,
   transformPoint,
   worldAABB,
   worldBottomFace,
   worldCorners,
+  type Footprint,
   type Placement,
 } from './placement';
 
@@ -276,5 +278,146 @@ describe('placement transforms', () => {
         expect(distance).toBeGreaterThan(TOLERANCE);
       }
     }
+  });
+
+  it('converts the reference box to an equivalent rectangular prism', () => {
+    const placed = placeSolid(referenceSolid, {
+      rotationDeg: 0,
+      origin: [0, 0, 0],
+    });
+
+    expect(placed.local).toEqual({
+      footprint: [
+        [0, -0.15],
+        [1.4, -0.15],
+        [1.4, 0.15],
+        [0, 0.15],
+      ],
+      zMin: 0,
+      zMax: 3.0,
+    });
+  });
+
+  it('deep-copies the source box when placing a solid', () => {
+    const source: SolidSpec = {
+      min: [0, -0.15, 0],
+      max: [1.4, 0.15, 3.0],
+      type: 'wall',
+      layer: 'A-WALL',
+      name: 'T/copy',
+    };
+    const placed = placeSolid(source, {
+      rotationDeg: 0,
+      origin: [0, 0, 0],
+    });
+
+    source.min[0] = 10;
+    source.min[1] = 10;
+    source.min[2] = 10;
+    source.max[0] = 20;
+    source.max[1] = 20;
+    source.max[2] = 20;
+
+    expect(placed.local).toEqual({
+      footprint: [
+        [0, -0.15],
+        [1.4, -0.15],
+        [1.4, 0.15],
+        [0, 0.15],
+      ],
+      zMin: 0,
+      zMax: 3.0,
+    });
+  });
+
+  it('deep-copies the source footprint when placing a prism', () => {
+    const footprint: Footprint = [
+      [0, 0],
+      [4, 0],
+      [3, 1],
+      [0, 1],
+    ];
+    const placed = placePrism(
+      {
+        type: 'wall',
+        layer: 'A-WALL',
+        name: 'T/prism-copy',
+        footprint,
+        zMin: 0,
+        zMax: 3,
+      },
+      { rotationDeg: 0, origin: [0, 0, 0] },
+    );
+
+    footprint[0][0] = 10;
+    footprint[1][1] = 10;
+    footprint[2][0] = 10;
+    footprint[3][1] = 10;
+
+    expect(placed.local.footprint).toEqual([
+      [0, 0],
+      [4, 0],
+      [3, 1],
+      [0, 1],
+    ]);
+  });
+
+  it('computes corners, bounds, and height for a non-rectangular prism', () => {
+    const placed = placePrism(
+      {
+        type: 'wall',
+        layer: 'A-WALL',
+        name: 'T/trapezoid',
+        footprint: [
+          [0, 0],
+          [4, 0],
+          [3, 1],
+          [0, 1],
+        ],
+        zMin: 0,
+        zMax: 3,
+      },
+      { rotationDeg: 0, origin: [0, 0, 0] },
+    );
+
+    expect(worldCorners(placed)).toEqual([
+      [0, 0, 0],
+      [4, 0, 0],
+      [3, 1, 0],
+      [0, 1, 0],
+      [0, 0, 3],
+      [4, 0, 3],
+      [3, 1, 3],
+      [0, 1, 3],
+    ]);
+    expect(worldAABB(placed)).toEqual({
+      min: [0, 0, 0],
+      max: [4, 1, 3],
+    });
+    expect(extrusionHeight(placed)).toBe(3);
+  });
+
+  it('rotates a non-rectangular prism footprint 90 degrees counterclockwise', () => {
+    const corners = worldCorners(
+      placePrism(
+        {
+          type: 'wall',
+          layer: 'A-WALL',
+          name: 'T/rotated-trapezoid',
+          footprint: [
+            [0, 0],
+            [4, 0],
+            [3, 1],
+            [0, 1],
+          ],
+          zMin: 0,
+          zMax: 3,
+        },
+        { rotationDeg: 90, origin: [0, 0, 0] },
+      ),
+    );
+
+    expectPointClose(corners[0], [0, 0, 0]);
+    expectPointClose(corners[1], [0, 4, 0]);
   });
 });

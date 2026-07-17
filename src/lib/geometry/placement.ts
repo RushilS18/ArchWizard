@@ -5,13 +5,21 @@ export interface Placement {
   rotationDeg: number;
 }
 
+export type Footprint = [
+  [number, number],
+  [number, number],
+  [number, number],
+  [number, number],
+]; // 4 local-XY points, counterclockwise, in the order (x0,y0),(x1,y0),(x1,y1),(x0,y1) for a rectangle
+
 export interface PlacedSolid {
   type: SolidType;
   layer: string;
   name: string;
   local: {
-    min: [number, number, number];
-    max: [number, number, number];
+    footprint: Footprint;
+    zMin: number;
+    zMax: number;
   };
   placement: Placement;
 }
@@ -20,13 +28,51 @@ export function placeSolid(
   local: SolidSpec,
   placement: Placement,
 ): PlacedSolid {
+  const [x0, y0, z0] = local.min;
+  const [x1, y1, z1] = local.max;
+
   return {
     type: local.type,
     layer: local.layer,
     name: local.name,
     local: {
-      min: [...local.min],
-      max: [...local.max],
+      footprint: [
+        [x0, y0],
+        [x1, y0],
+        [x1, y1],
+        [x0, y1],
+      ],
+      zMin: z0,
+      zMax: z1,
+    },
+    placement,
+  };
+}
+
+export function placePrism(
+  args: {
+    type: SolidType;
+    layer: string;
+    name: string;
+    footprint: Footprint;
+    zMin: number;
+    zMax: number;
+  },
+  placement: Placement,
+): PlacedSolid {
+  return {
+    type: args.type,
+    layer: args.layer,
+    name: args.name,
+    local: {
+      footprint: [
+        [...args.footprint[0]],
+        [...args.footprint[1]],
+        [...args.footprint[2]],
+        [...args.footprint[3]],
+      ],
+      zMin: args.zMin,
+      zMax: args.zMax,
     },
     placement,
   };
@@ -50,30 +96,21 @@ export function transformPoint(
 export function worldBottomFace(
   placed: PlacedSolid,
 ): [number, number, number][] {
-  const [x0, y0, z0] = placed.local.min;
-  const [x1, y1] = placed.local.max;
-
-  return [
-    transformPoint([x0, y0, z0], placed.placement),
-    transformPoint([x1, y0, z0], placed.placement),
-    transformPoint([x1, y1, z0], placed.placement),
-    transformPoint([x0, y1, z0], placed.placement),
-  ];
+  return placed.local.footprint.map(([x, y]) =>
+    transformPoint([x, y, placed.local.zMin], placed.placement),
+  );
 }
 
 export function worldCorners(
   placed: PlacedSolid,
 ): [number, number, number][] {
   const bottom = worldBottomFace(placed);
-  const [x0, y0] = placed.local.min;
-  const [x1, y1, z1] = placed.local.max;
 
   return [
     ...bottom,
-    transformPoint([x0, y0, z1], placed.placement),
-    transformPoint([x1, y0, z1], placed.placement),
-    transformPoint([x1, y1, z1], placed.placement),
-    transformPoint([x0, y1, z1], placed.placement),
+    ...placed.local.footprint.map(([x, y]) =>
+      transformPoint([x, y, placed.local.zMax], placed.placement),
+    ),
   ];
 }
 
@@ -98,5 +135,5 @@ export function worldAABB(placed: PlacedSolid): {
 }
 
 export function extrusionHeight(placed: PlacedSolid): number {
-  return placed.local.max[2] - placed.local.min[2];
+  return placed.local.zMax - placed.local.zMin;
 }

@@ -1,10 +1,156 @@
-import type { Footprint, Placement } from './placement';
+import type { Footprint, Placement, PlacedSolid } from './placement';
+import { placePrism } from './placement';
+import type { SolidSpec } from './types';
 
 export interface WallBand {
   edgeIndex: number;
   placement: Placement;
   centerlineLength: number;
   footprint: Footprint;
+}
+
+function assertValidBandFootprint(footprint: Footprint, label: string): void {
+  const epsilon = 1e-9;
+
+  let minimumPairwiseDistance = Number.POSITIVE_INFINITY;
+  for (let first = 0; first < footprint.length; first += 1) {
+    for (let second = first + 1; second < footprint.length; second += 1) {
+      minimumPairwiseDistance = Math.min(
+        minimumPairwiseDistance,
+        Math.hypot(
+          footprint[second][0] - footprint[first][0],
+          footprint[second][1] - footprint[first][1],
+        ),
+      );
+    }
+  }
+
+  let footprintTwiceArea = 0;
+  for (let i = 0; i < footprint.length; i += 1) {
+    const current = footprint[i];
+    const next = footprint[(i + 1) % footprint.length];
+    footprintTwiceArea +=
+      current[0] * next[1] - next[0] * current[1];
+  }
+  const footprintArea = footprintTwiceArea / 2;
+  const outerStartX = footprint[0][0];
+  const outerEndX = footprint[1][0];
+  const innerStartX = footprint[3][0];
+  const innerEndX = footprint[2][0];
+
+  // At a convex vertex the inner face shortens; at a reflex vertex the outer
+  // face shortens — both directions must be guarded.
+  if (
+    !(minimumPairwiseDistance > epsilon) ||
+    !(footprintArea > epsilon) ||
+    !(outerStartX < outerEndX) ||
+    !(innerStartX < innerEndX)
+  ) {
+    throw new Error(
+      `Degenerate wall band at ${label}: minimum pairwise distance ${minimumPairwiseDistance}, signed area ${footprintArea}, outer start x ${outerStartX}, outer end x ${outerEndX}, inner start x ${innerStartX}, inner end x ${innerEndX}, footprint ${JSON.stringify(footprint)}.`,
+    );
+  }
+}
+
+export function clipBandToRange(
+  footprint: Footprint,
+  xLow: number,
+  xHigh: number,
+): Footprint {
+  const epsilon = 1e-9;
+  const outerY = footprint[0][1];
+  const innerY = footprint[2][1];
+
+  if (Math.abs(footprint[1][1] - outerY) > epsilon) {
+    throw new Error(
+      `Band long edge is not parallel to the centerline: footprint[1][1] ${footprint[1][1]} differs from outerY ${outerY}.`,
+    );
+  }
+  if (Math.abs(footprint[3][1] - innerY) > epsilon) {
+    throw new Error(
+      `Band long edge is not parallel to the centerline: footprint[3][1] ${footprint[3][1]} differs from innerY ${innerY}.`,
+    );
+  }
+
+  const coreLow = Math.max(footprint[0][0], footprint[3][0]);
+  const coreHigh = Math.min(footprint[1][0], footprint[2][0]);
+
+  if (xLow >= xHigh) {
+    throw new Error(
+      `Clip range is empty or inverted: xLow ${xLow} >= xHigh ${xHigh}.`,
+    );
+  }
+
+  if (Number.isFinite(xLow)) {
+    if (!(coreLow - epsilon <= xLow && xLow <= coreHigh + epsilon)) {
+      throw new Error(
+        `Clip boundary falls outside the band core (an opening overlapping a corner): xLow ${xLow}, coreLow ${coreLow}, coreHigh ${coreHigh}.`,
+      );
+    }
+  }
+  if (Number.isFinite(xHigh)) {
+    if (!(coreLow - epsilon <= xHigh && xHigh <= coreHigh + epsilon)) {
+      throw new Error(
+        `Clip boundary falls outside the band core (an opening overlapping a corner): xHigh ${xHigh}, coreLow ${coreLow}, coreHigh ${coreHigh}.`,
+      );
+    }
+  }
+
+  const clipped: Footprint = [
+    [xLow === -Infinity ? footprint[0][0] : xLow, outerY],
+    [xHigh === +Infinity ? footprint[1][0] : xHigh, outerY],
+    [xHigh === +Infinity ? footprint[2][0] : xHigh, innerY],
+    [xLow === -Infinity ? footprint[3][0] : xLow, innerY],
+  ];
+
+  assertValidBandFootprint(clipped, `clip [${xLow}, ${xHigh}]`);
+  return clipped;
+}
+
+export function placeBandSolids(
+  band: WallBand,
+  solids: SolidSpec[],
+): PlacedSolid[] {
+  const epsilon = 1e-9;
+  const L = band.centerlineLength;
+  const outerY = band.footprint[0][1];
+  const innerY = band.footprint[2][1];
+
+  return solids.map((solid) => {
+    if (solid.min[0] < -epsilon || solid.max[0] > L + epsilon) {
+      throw new Error(
+        `Solid ${solid.name} lies outside the centerline span [0, ${L}]: min[0] ${solid.min[0]}, max[0] ${solid.max[0]}.`,
+      );
+    }
+    if (Math.abs(solid.min[1] - outerY) > epsilon) {
+      throw new Error(
+        `Solid ${solid.name} thickness mismatch: solid.min[1] ${solid.min[1]} differs from band outerY ${outerY}.`,
+      );
+    }
+    if (Math.abs(solid.max[1] - innerY) > epsilon) {
+      throw new Error(
+        `Solid ${solid.name} thickness mismatch: solid.max[1] ${solid.max[1]} differs from band innerY ${innerY}.`,
+      );
+    }
+
+    const xLow =
+      solid.min[0] <= epsilon ? Number.NEGATIVE_INFINITY : solid.min[0];
+    const xHigh =
+      solid.max[0] >= L - epsilon ? Number.POSITIVE_INFINITY : solid.max[0];
+    const footprint = clipBandToRange(band.footprint, xLow, xHigh);
+
+    return placePrism(
+      {
+        type: solid.type,
+        layer: solid.layer,
+        name: solid.name,
+        footprint,
+        zMin: solid.min[2],
+        zMax: solid.max[2],
+      },
+      band.placement,
+    );
+  });
 }
 
 export function computeWallBands(
@@ -161,44 +307,7 @@ export function computeWallBands(
       },
     ) as Footprint;
 
-    let minimumPairwiseDistance = Number.POSITIVE_INFINITY;
-    for (let first = 0; first < footprint.length; first += 1) {
-      for (let second = first + 1; second < footprint.length; second += 1) {
-        minimumPairwiseDistance = Math.min(
-          minimumPairwiseDistance,
-          Math.hypot(
-            footprint[second][0] - footprint[first][0],
-            footprint[second][1] - footprint[first][1],
-          ),
-        );
-      }
-    }
-
-    let footprintTwiceArea = 0;
-    for (let i = 0; i < footprint.length; i += 1) {
-      const current = footprint[i];
-      const next = footprint[(i + 1) % footprint.length];
-      footprintTwiceArea +=
-        current[0] * next[1] - next[0] * current[1];
-    }
-    const footprintArea = footprintTwiceArea / 2;
-    const outerStartX = footprint[0][0];
-    const outerEndX = footprint[1][0];
-    const innerStartX = footprint[3][0];
-    const innerEndX = footprint[2][0];
-
-    // At a convex vertex the inner face shortens; at a reflex vertex the outer
-    // face shortens — both directions must be guarded.
-    if (
-      !(minimumPairwiseDistance > epsilon) ||
-      !(footprintArea > epsilon) ||
-      !(outerStartX < outerEndX) ||
-      !(innerStartX < innerEndX)
-    ) {
-      throw new Error(
-        `Degenerate wall band at edgeIndex ${edgeIndex}: minimum pairwise distance ${minimumPairwiseDistance}, signed area ${footprintArea}, outer start x ${outerStartX}, outer end x ${outerEndX}, inner start x ${innerStartX}, inner end x ${innerEndX}, footprint ${JSON.stringify(footprint)}.`,
-      );
-    }
+    assertValidBandFootprint(footprint, `edgeIndex ${edgeIndex}`);
 
     const placement: Placement = {
       origin: [point[0], point[1], 0],

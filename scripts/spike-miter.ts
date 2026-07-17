@@ -3,13 +3,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import rhino3dm from 'rhino3dm';
 
 import { buildFile3dmPlaced } from '../src/lib/geometry/build-3dm-core';
-import { computeWallBands } from '../src/lib/geometry/miter';
+import { computeWallBands, placeBandSolids } from '../src/lib/geometry/miter';
 import {
   placePrism,
   worldCorners,
 } from '../src/lib/geometry/placement';
 import type { PlacedSolid } from '../src/lib/geometry/placement';
+import type { WallSpec } from '../src/lib/geometry/types';
 import { validatePlacedFile } from '../src/lib/geometry/validate3dm';
+import { decomposeWall } from '../src/lib/geometry/wall-decompose';
 
 let rhinoModulePromise: ReturnType<typeof rhino3dm> | null = null;
 
@@ -127,6 +129,83 @@ async function runCase(
   return validation.pass;
 }
 
+async function runCaseD(
+  outline: [number, number][],
+  thickness: number,
+  zMin: number,
+  zMax: number,
+  filePath: string,
+): Promise<boolean> {
+  const bands = computeWallBands(outline, thickness);
+  const band0 = bands[0];
+
+  const referenceWall: WallSpec = {
+    id: 'W-01',
+    xStart: 0,
+    xEnd: band0.centerlineLength,
+    y: 0,
+    thickness,
+    baseZ: zMin,
+    height: zMax - zMin,
+    openings: [
+      {
+        id: 'win1',
+        kind: 'window',
+        xStart: 1.4,
+        width: 1.2,
+        sill: 0.9,
+        head: 2.1,
+      },
+      {
+        id: 'dr1',
+        kind: 'door',
+        xStart: 3.8,
+        width: 0.9,
+        sill: 0,
+        head: 2.1,
+      },
+    ],
+  };
+
+  const placed: PlacedSolid[] = [
+    ...placeBandSolids(band0, decomposeWall(referenceWall)),
+    ...bands.slice(1).map((band) =>
+      placePrism(
+        {
+          type: 'wall',
+          layer: 'A-WALL',
+          name: `W-${String(band.edgeIndex + 1).padStart(2, '0')}`,
+          footprint: band.footprint,
+          zMin,
+          zMax,
+        },
+        band.placement,
+      ),
+    ),
+  ];
+
+  const bytes = await buildPlacedFile(placed);
+  await writeFile(filePath, bytes);
+  const bytesFromDisk = await readFile(filePath);
+  const validation = await validatePlacedFile(
+    new Uint8Array(
+      bytesFromDisk.buffer,
+      bytesFromDisk.byteOffset,
+      bytesFromDisk.byteLength,
+    ),
+    placed,
+  );
+
+  console.log('\n=== CASE D — RECTANGLE WITH OPENINGS ===');
+  console.log(validation.report);
+  console.log(
+    validation.pass
+      ? `PASS: ${placed.length}/${placed.length} corner-validated`
+      : `FAIL: validation failed (${placed.length} expected objects)`,
+  );
+  return validation.pass;
+}
+
 async function main() {
   await mkdir('artifacts', { recursive: true });
 
@@ -180,7 +259,15 @@ async function main() {
   );
   const caseCPass = !negativeValidation.pass;
 
-  const pass = caseAPass && caseBPass && caseCPass;
+  const caseDPass = await runCaseD(
+    rectOutline,
+    0.3,
+    0,
+    3.0,
+    'artifacts/spike-miter-openings.3dm',
+  );
+
+  const pass = caseAPass && caseBPass && caseCPass && caseDPass;
   console.log(`\nMITER SPIKE: ${pass ? 'PASS' : 'FAIL'}`);
   process.exit(pass ? 0 : 1);
 }

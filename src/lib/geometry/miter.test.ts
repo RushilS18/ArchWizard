@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeWallBands } from './miter';
+import {
+  clipBandToRange,
+  computeWallBands,
+  placeBandSolids,
+} from './miter';
+import type { WallSpec } from './types';
+import { decomposeWall } from './wall-decompose';
 
 const tolerance = 1e-9;
 
@@ -252,5 +258,256 @@ describe('computeWallBands', () => {
         );
       });
     }).not.toThrow();
+  });
+});
+
+const referenceWall: WallSpec = {
+  id: 'W-01',
+  xStart: 0,
+  xEnd: 6,
+  y: 0,
+  thickness: 0.3,
+  baseZ: 0,
+  height: 3.0,
+  openings: [
+    {
+      id: 'win1',
+      kind: 'window',
+      xStart: 1.4,
+      width: 1.2,
+      sill: 0.9,
+      head: 2.1,
+    },
+    {
+      id: 'dr1',
+      kind: 'door',
+      xStart: 3.8,
+      width: 0.9,
+      sill: 0,
+      head: 2.1,
+    },
+  ],
+};
+
+function referenceBand0() {
+  return computeWallBands(
+    [
+      [0, 0],
+      [6, 0],
+      [6, 4],
+      [0, 4],
+    ],
+    0.3,
+  )[0];
+}
+
+describe('clipBandToRange', () => {
+  it('keeps the start miter when clipping with -Infinity', () => {
+    const band0 = referenceBand0();
+    const clipped = clipBandToRange(
+      band0.footprint,
+      Number.NEGATIVE_INFINITY,
+      1.4,
+    );
+    [
+      [-0.15, -0.15],
+      [1.4, -0.15],
+      [1.4, 0.15],
+      [0.15, 0.15],
+    ].forEach((point, index) => {
+      expectPoint(clipped[index], point);
+    });
+  });
+
+  it('clips an interior range to a plain rectangle', () => {
+    const band0 = referenceBand0();
+    const clipped = clipBandToRange(band0.footprint, 1.4, 2.6);
+    [
+      [1.4, -0.15],
+      [2.6, -0.15],
+      [2.6, 0.15],
+      [1.4, 0.15],
+    ].forEach((point, index) => {
+      expectPoint(clipped[index], point);
+    });
+  });
+
+  it('keeps the end miter when clipping with +Infinity', () => {
+    const band0 = referenceBand0();
+    const clipped = clipBandToRange(
+      band0.footprint,
+      4.7,
+      Number.POSITIVE_INFINITY,
+    );
+    [
+      [4.7, -0.15],
+      [6.15, -0.15],
+      [5.85, 0.15],
+      [4.7, 0.15],
+    ].forEach((point, index) => {
+      expectPoint(clipped[index], point);
+    });
+  });
+
+  it('returns the band footprint unchanged for a full-range clip', () => {
+    const band0 = referenceBand0();
+    const clipped = clipBandToRange(
+      band0.footprint,
+      Number.NEGATIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+    );
+    band0.footprint.forEach((point, index) => {
+      expectPoint(clipped[index], point);
+    });
+  });
+
+  it('throws when xLow falls below the band core', () => {
+    const band0 = referenceBand0();
+    expect(() => clipBandToRange(band0.footprint, 0.1, 2.0)).toThrow(/core/i);
+  });
+
+  it('throws when xHigh falls above the band core', () => {
+    const band0 = referenceBand0();
+    expect(() => clipBandToRange(band0.footprint, 2.0, 5.9)).toThrow(/core/i);
+  });
+
+  it('throws when xLow >= xHigh', () => {
+    const band0 = referenceBand0();
+    expect(() => clipBandToRange(band0.footprint, 3.0, 3.0)).toThrow();
+  });
+});
+
+describe('placeBandSolids', () => {
+  it('places decomposeWall solids onto a mitered band', () => {
+    const band0 = referenceBand0();
+    const placed = placeBandSolids(band0, decomposeWall(referenceWall));
+
+    expect(placed.map((solid) => solid.name)).toEqual([
+      'W-01/p1',
+      'W-01/s1',
+      'W-01/l1',
+      'W-01/p2',
+      'W-01/l2',
+      'W-01/p3',
+    ]);
+
+    const expected: {
+      name: string;
+      footprint: [number, number][];
+      zMin: number;
+      zMax: number;
+    }[] = [
+      {
+        name: 'W-01/p1',
+        footprint: [
+          [-0.15, -0.15],
+          [1.4, -0.15],
+          [1.4, 0.15],
+          [0.15, 0.15],
+        ],
+        zMin: 0,
+        zMax: 3,
+      },
+      {
+        name: 'W-01/s1',
+        footprint: [
+          [1.4, -0.15],
+          [2.6, -0.15],
+          [2.6, 0.15],
+          [1.4, 0.15],
+        ],
+        zMin: 0,
+        zMax: 0.9,
+      },
+      {
+        name: 'W-01/l1',
+        footprint: [
+          [1.4, -0.15],
+          [2.6, -0.15],
+          [2.6, 0.15],
+          [1.4, 0.15],
+        ],
+        zMin: 2.1,
+        zMax: 3,
+      },
+      {
+        name: 'W-01/p2',
+        footprint: [
+          [2.6, -0.15],
+          [3.8, -0.15],
+          [3.8, 0.15],
+          [2.6, 0.15],
+        ],
+        zMin: 0,
+        zMax: 3,
+      },
+      {
+        name: 'W-01/l2',
+        footprint: [
+          [3.8, -0.15],
+          [4.7, -0.15],
+          [4.7, 0.15],
+          [3.8, 0.15],
+        ],
+        zMin: 2.1,
+        zMax: 3,
+      },
+      {
+        name: 'W-01/p3',
+        footprint: [
+          [4.7, -0.15],
+          [6.15, -0.15],
+          [5.85, 0.15],
+          [4.7, 0.15],
+        ],
+        zMin: 0,
+        zMax: 3,
+      },
+    ];
+
+    expected.forEach((entry, index) => {
+      const solid = placed[index];
+      expect(solid.name).toBe(entry.name);
+      expect(solid.placement.rotationDeg).toBe(0);
+      expectPoint(solid.placement.origin, [0, 0, 0]);
+      entry.footprint.forEach((point, pointIndex) => {
+        expectPoint(solid.local.footprint[pointIndex], point);
+      });
+      expect(Math.abs(solid.local.zMin - entry.zMin)).toBeLessThanOrEqual(
+        tolerance,
+      );
+      expect(Math.abs(solid.local.zMax - entry.zMax)).toBeLessThanOrEqual(
+        tolerance,
+      );
+    });
+  });
+
+  it('throws on a thickness mismatch between wall and band', () => {
+    const band0 = referenceBand0();
+    const mismatchedWall: WallSpec = { ...referenceWall, thickness: 0.4 };
+    expect(() =>
+      placeBandSolids(band0, decomposeWall(mismatchedWall)),
+    ).toThrow(/W-01\/p1/);
+  });
+
+  it('throws when an opening starts inside the miter zone', () => {
+    const band0 = referenceBand0();
+    const cornerOverlapWall: WallSpec = {
+      ...referenceWall,
+      openings: [
+        {
+          id: 'win1',
+          kind: 'window',
+          xStart: 0.05,
+          width: 1.0,
+          sill: 0.9,
+          head: 2.1,
+        },
+        referenceWall.openings[1],
+      ],
+    };
+    expect(() =>
+      placeBandSolids(band0, decomposeWall(cornerOverlapWall)),
+    ).toThrow(/core/i);
   });
 });

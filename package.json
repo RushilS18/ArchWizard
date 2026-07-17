@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "spike": "tsx scripts/spike-wall.ts",
-    "spike:rot": "tsx scripts/spike-rotated.ts"
+    "spike:rot": "tsx scripts/spike-rotated.ts",
+    "spike:miter": "tsx scripts/spike-miter.ts"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

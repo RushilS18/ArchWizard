@@ -19,21 +19,6 @@ function approxEqual(a: number, b: number, tol = 1e-6): boolean {
   return Math.abs(a - b) <= tol;
 }
 
-function bboxMatches(
-  bbox: { min: number[]; max: number[] },
-  min: [number, number, number],
-  max: [number, number, number],
-): boolean {
-  return (
-    approxEqual(bbox.min[0], min[0]) &&
-    approxEqual(bbox.min[1], min[1]) &&
-    approxEqual(bbox.min[2], min[2]) &&
-    approxEqual(bbox.max[0], max[0]) &&
-    approxEqual(bbox.max[1], max[1]) &&
-    approxEqual(bbox.max[2], max[2])
-  );
-}
-
 function createPlacedProfileCurve(rhino: RhinoModule, placed: PlacedSolid) {
   const bottomFace = worldBottomFace(placed);
   const points = [...bottomFace, bottomFace[0]];
@@ -72,11 +57,20 @@ function createPlacedExtrusion(rhino: RhinoModule, placed: PlacedSolid) {
       continue;
     }
     const bbox = getBBox(extrusion);
-    if (bboxMatches(bbox, expected.min, expected.max)) {
+    // getBoundingBox() on an Extrusion is LOOSE: it is the profile's bbox in the extrusion's own
+    // plane coordinates, transformed to world. It is tight only for rectangular profiles or
+    // world-aligned profile planes. Verified 2026-07-17: a 135-degree trapezoid band reported an
+    // AABB 0.15*sqrt(2) too large in -x and -y while the solid itself was correct.
+    // This ladder's only job is choosing extrusion DIRECTION, which affects only z, and z IS exact.
+    // Geometry correctness is proven by validatePlacedFile's Brep-vertex corner check, not here.
+    if (
+      approxEqual(bbox.min[2], expected.min[2]) &&
+      approxEqual(bbox.max[2], expected.max[2])
+    ) {
       return extrusion;
     }
     diagnostics.push(
-      `${attempt.label}: actual=${JSON.stringify({ min: bbox.min, max: bbox.max })} expected=${JSON.stringify(
+      `${attempt.label}: zRange actual=[${bbox.min[2]},${bbox.max[2]}] expected=[${expected.min[2]},${expected.max[2]}] actualAABB=${JSON.stringify({ min: bbox.min, max: bbox.max })} expectedAABB=${JSON.stringify(
         expected,
       )}`,
     );

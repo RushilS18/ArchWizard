@@ -100,7 +100,28 @@ async function main() {
     allSolids,
   );
 
-  const pass = zeroPass && rotatedPass;
+  const rotatedBytesFromDisk = await readFile('artifacts/spike-rotated-37.3dm');
+  const wrongPlaced = allSolids.map((solid) =>
+    placeSolid(solid, { rotationDeg: 38, origin: [3, 4, 0] }),
+  );
+  const negativeValidation = await validatePlacedFile(
+    new Uint8Array(
+      rotatedBytesFromDisk.buffer,
+      rotatedBytesFromDisk.byteOffset,
+      rotatedBytesFromDisk.byteLength,
+    ),
+    wrongPlaced,
+  );
+  console.log('\n=== CASE C — NEGATIVE TEST (38deg expectation vs 37deg file) ===');
+  console.log(negativeValidation.report);
+  console.log(
+    negativeValidation.pass
+      ? 'CASE C: DID NOT FAIL — validator is not detecting wrong corners'
+      : 'CASE C: correctly rejected wrong geometry',
+  );
+  const negativePass = !negativeValidation.pass;
+
+  const pass = zeroPass && rotatedPass && negativePass;
   console.log(`\nROTATION SPIKE: ${pass ? 'PASS' : 'FAIL'}`);
   process.exit(pass ? 0 : 1);
 }

@@ -25,8 +25,8 @@ export function placeSolid(
     layer: local.layer,
     name: local.name,
     local: {
-      min: local.min,
-      max: local.max,
+      min: [...local.min],
+      max: [...local.max],
     },
     placement,
   };

@@ -232,6 +232,78 @@ export const BuildingSpecSchema = z
         });
       }
     }
+
+    const EPS = 1e-9;
+    const pointsEqual = (
+      a: readonly [number, number],
+      b: readonly [number, number],
+    ): boolean =>
+      Math.abs(a[0] - b[0]) <= EPS && Math.abs(a[1] - b[1]) <= EPS;
+
+    for (const level of data.levels) {
+      const massingIndex = data.massing.findIndex(
+        (entry) => entry.levelId === level.id,
+      );
+      if (massingIndex < 0) {
+        continue;
+      }
+
+      const outline = data.massing[massingIndex].outline;
+      const n = outline.length;
+
+      let twiceArea = 0;
+      for (let i = 0; i < n; i++) {
+        const current = outline[i];
+        const next = outline[(i + 1) % n];
+        twiceArea += current[0] * next[1] - next[0] * current[1];
+      }
+      const signedArea = twiceArea / 2;
+      if (!(signedArea > EPS)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["massing", massingIndex, "outline"],
+          message: `Outline for level ${level.id} must be counterclockwise (positive winding); signed area ${signedArea}`,
+        });
+      }
+
+      const wallsForLevel: {
+        wall: (typeof data.envelope.walls)[number];
+        originalIndex: number;
+      }[] = [];
+      for (let i = 0; i < data.envelope.walls.length; i++) {
+        if (data.envelope.walls[i].levelId === level.id) {
+          wallsForLevel.push({
+            wall: data.envelope.walls[i],
+            originalIndex: i,
+          });
+        }
+      }
+
+      if (wallsForLevel.length !== n) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["envelope", "walls"],
+          message: `Level ${level.id} expects ${n} walls for ${n} outline edges but has ${wallsForLevel.length}`,
+        });
+        continue;
+      }
+
+      for (let i = 0; i < n; i++) {
+        const expectedStart = outline[i];
+        const expectedEnd = outline[(i + 1) % n];
+        const { wall, originalIndex } = wallsForLevel[i];
+        if (
+          !pointsEqual(wall.start, expectedStart) ||
+          !pointsEqual(wall.end, expectedEnd)
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["envelope", "walls", originalIndex],
+            message: `Wall ${wall.id} on level ${level.id} does not match outline edge ${i}: expected start [${expectedStart[0]}, ${expectedStart[1]}] end [${expectedEnd[0]}, ${expectedEnd[1]}], actual start [${wall.start[0]}, ${wall.start[1]}] end [${wall.end[0]}, ${wall.end[1]}]`,
+          });
+        }
+      }
+    }
   });
 
 export type Site = z.infer<typeof SiteSchema>;

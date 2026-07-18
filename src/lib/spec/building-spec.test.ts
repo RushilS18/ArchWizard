@@ -34,6 +34,30 @@ function validFixture(): BuildingSpec {
           thickness: 0.2,
           height: 3.5,
         },
+        {
+          id: "W2",
+          levelId: "L1",
+          start: [10, 0],
+          end: [10, 8],
+          thickness: 0.2,
+          height: 3.5,
+        },
+        {
+          id: "W3",
+          levelId: "L1",
+          start: [10, 8],
+          end: [0, 8],
+          thickness: 0.2,
+          height: 3.5,
+        },
+        {
+          id: "W4",
+          levelId: "L1",
+          start: [0, 8],
+          end: [0, 0],
+          thickness: 0.2,
+          height: 3.5,
+        },
       ],
       slabs: [
         {
@@ -216,5 +240,167 @@ describe("BuildingSpecSchema", () => {
         entry.path[0] === "levels" && entry.path.includes("id"),
     );
     expect(issue).toBeDefined();
+  });
+
+  it("accepts walls that form the outline loop", () => {
+    const result = BuildingSpecSchema.safeParse(validFixture());
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a level whose wall count does not match the outline edge count", () => {
+    const spec = validFixture();
+    spec.envelope.walls = spec.envelope.walls.filter((wall) => wall.id !== "W4");
+
+    const result = BuildingSpecSchema.safeParse(spec);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const issue = result.error.issues.find(
+      (entry) =>
+        entry.path[0] === "envelope" &&
+        entry.path[1] === "walls" &&
+        entry.message.includes("4") &&
+        entry.message.includes("3"),
+    );
+    expect(issue).toBeDefined();
+  });
+
+  it("rejects a wall whose endpoints do not match its outline edge", () => {
+    const spec = validFixture();
+    spec.envelope.walls[1].end = [10, 7];
+
+    const result = BuildingSpecSchema.safeParse(spec);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const issue = result.error.issues.find(
+      (entry) =>
+        entry.path[0] === "envelope" &&
+        entry.path[1] === "walls" &&
+        entry.path[2] === 1 &&
+        entry.message.includes("W2") &&
+        entry.message.toLowerCase().includes("expected") &&
+        entry.message.toLowerCase().includes("actual"),
+    );
+    expect(issue).toBeDefined();
+  });
+
+  it("rejects walls given out of outline order", () => {
+    const spec = validFixture();
+    const wall2 = spec.envelope.walls[1];
+    const wall3 = spec.envelope.walls[2];
+    spec.envelope.walls[1] = wall3;
+    spec.envelope.walls[2] = wall2;
+
+    const result = BuildingSpecSchema.safeParse(spec);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const mismatchIssues = result.error.issues.filter(
+      (entry) =>
+        entry.path[0] === "envelope" &&
+        entry.path[1] === "walls" &&
+        typeof entry.path[2] === "number",
+    );
+    expect(mismatchIssues.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("rejects a clockwise outline", () => {
+    const spec = validFixture();
+    spec.massing[0].outline = [
+      [0, 0],
+      [0, 8],
+      [10, 8],
+      [10, 0],
+    ];
+    spec.envelope.walls = [
+      {
+        id: "W1",
+        levelId: "L1",
+        start: [0, 0],
+        end: [0, 8],
+        thickness: 0.2,
+        height: 3.5,
+      },
+      {
+        id: "W2",
+        levelId: "L1",
+        start: [0, 8],
+        end: [10, 8],
+        thickness: 0.2,
+        height: 3.5,
+      },
+      {
+        id: "W3",
+        levelId: "L1",
+        start: [10, 8],
+        end: [10, 0],
+        thickness: 0.2,
+        height: 3.5,
+      },
+      {
+        id: "W4",
+        levelId: "L1",
+        start: [10, 0],
+        end: [0, 0],
+        thickness: 0.2,
+        height: 3.5,
+      },
+    ];
+
+    const result = BuildingSpecSchema.safeParse(spec);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const issue = result.error.issues.find(
+      (entry) =>
+        entry.path[0] === "massing" &&
+        entry.path.includes("outline") &&
+        /winding|area/i.test(entry.message),
+    );
+    expect(issue).toBeDefined();
+  });
+
+  it("accepts a triangle loop", () => {
+    const spec = validFixture();
+    spec.massing[0].outline = [
+      [0, 0],
+      [6, 0],
+      [0, 4],
+    ];
+    spec.envelope.walls = [
+      {
+        id: "W1",
+        levelId: "L1",
+        start: [0, 0],
+        end: [6, 0],
+        thickness: 0.2,
+        height: 3.5,
+      },
+      {
+        id: "W2",
+        levelId: "L1",
+        start: [6, 0],
+        end: [0, 4],
+        thickness: 0.2,
+        height: 3.5,
+      },
+      {
+        id: "W3",
+        levelId: "L1",
+        start: [0, 4],
+        end: [0, 0],
+        thickness: 0.2,
+        height: 3.5,
+      },
+    ];
+    spec.envelope.slabs[0].outline = [
+      [0, 0],
+      [6, 0],
+      [0, 4],
+    ];
+
+    const result = BuildingSpecSchema.safeParse(spec);
+    expect(result.success).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-export type SolidType = 'wall' | 'glazing' | 'door' | 'slab';
+export type SolidType = 'wall' | 'glazing' | 'door' | 'slab' | 'roof';
 
 export interface SolidSpec {
   type: SolidType;

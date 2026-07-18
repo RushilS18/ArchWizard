@@ -102,6 +102,7 @@ export function buildFile3dmPlaced(rhino: RhinoModule, placed: PlacedSolid[]): U
     { name: 'A-GLAZ', color: { r: 0, g: 150, b: 255, a: 255 } },
     { name: 'A-DOOR', color: { r: 200, g: 120, b: 0, a: 255 } },
     { name: 'A-SLAB', color: { r: 128, g: 128, b: 128, a: 255 } },
+    { name: 'A-ROOF', color: { r: 120, g: 90, b: 60, a: 255 } },
   ];
 
   layerDefs.forEach((def) => {

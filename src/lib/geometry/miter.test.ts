@@ -259,6 +259,98 @@ describe('computeWallBands', () => {
       });
     }).not.toThrow();
   });
+
+  const rect6x4: [number, number][] = [
+    [0, 0],
+    [6, 0],
+    [6, 4],
+    [0, 4],
+  ];
+
+  it('applies a single number to every edge', () => {
+    expect(computeWallBands(rect6x4, 0.3)).toEqual(
+      computeWallBands(rect6x4, [0.3, 0.3, 0.3, 0.3]),
+    );
+  });
+
+  it('mixed thickness closes the corner exactly', () => {
+    const bands = computeWallBands(rect6x4, [0.3, 0.2, 0.3, 0.2]);
+
+    expectPoint(bands[0].placement.origin, [0, 0, 0]);
+    expect(bands[0].placement.rotationDeg).toBe(0);
+    [
+      [-0.1, -0.15],
+      [6.1, -0.15],
+      [5.9, 0.15],
+      [0.1, 0.15],
+    ].forEach((point, index) => {
+      expectPoint(bands[0].footprint[index], point);
+    });
+
+    expectPoint(bands[1].placement.origin, [6, 0, 0]);
+    expect(bands[1].placement.rotationDeg).toBe(90);
+    [
+      [-0.15, -0.1],
+      [4.15, -0.1],
+      [3.85, 0.1],
+      [0.15, 0.1],
+    ].forEach((point, index) => {
+      expectPoint(bands[1].footprint[index], point);
+    });
+  });
+
+  it('mixed-thickness corners share exact points', () => {
+    const bands = computeWallBands(rect6x4, [0.3, 0.2, 0.3, 0.2]);
+
+    function toWorld(
+      local: readonly [number, number],
+      placement: { origin: [number, number, number]; rotationDeg: number },
+    ): [number, number] {
+      const radians = (placement.rotationDeg * Math.PI) / 180;
+      const cosine = Math.cos(radians);
+      const sine = Math.sin(radians);
+      return [
+        placement.origin[0] + local[0] * cosine - local[1] * sine,
+        placement.origin[1] + local[0] * sine + local[1] * cosine,
+      ];
+    }
+
+    expectPoint(
+      toWorld(bands[0].footprint[1], bands[0].placement),
+      toWorld(bands[1].footprint[0], bands[1].placement),
+    );
+    expectPoint(
+      toWorld(bands[0].footprint[2], bands[0].placement),
+      toWorld(bands[1].footprint[3], bands[1].placement),
+    );
+  });
+
+  it('rejects a thickness array of the wrong length', () => {
+    expect(() => computeWallBands(rect6x4, [0.3, 0.3, 0.3])).toThrow(
+      /3.*4|4.*3/,
+    );
+  });
+
+  it('rejects a non-positive thickness entry', () => {
+    expect(() =>
+      computeWallBands(rect6x4, [0.3, 0, 0.3, 0.3]),
+    ).toThrow(/edge(?:Index)?\s*1|edge 1/i);
+  });
+
+  it('rejects a thickness change at a collinear vertex', () => {
+    expect(() =>
+      computeWallBands(
+        [
+          [0, 0],
+          [3, 0],
+          [6, 0],
+          [6, 4],
+          [0, 4],
+        ],
+        [0.3, 0.2, 0.3, 0.3, 0.3],
+      ),
+    ).toThrow(/vertex 1/);
+  });
 });
 
 const referenceWall: WallSpec = {

@@ -155,7 +155,7 @@ export function placeBandSolids(
 
 export function computeWallBands(
   outline: [number, number][],
-  thickness: number,
+  thickness: number | number[],
 ): WallBand[] {
   const epsilon = 1e-9;
 
@@ -164,8 +164,22 @@ export function computeWallBands(
       `Wall outline must contain at least 3 points; received ${outline.length}.`,
     );
   }
-  if (!(thickness > 0)) {
-    throw new Error(`Wall thickness must be greater than 0; received ${thickness}.`);
+
+  const thicknesses: number[] = Array.isArray(thickness)
+    ? thickness
+    : Array.from({ length: outline.length }, () => thickness);
+
+  if (thicknesses.length !== outline.length) {
+    throw new Error(
+      `Wall thickness array length ${thicknesses.length} does not match outline length ${outline.length}.`,
+    );
+  }
+  for (let i = 0; i < thicknesses.length; i += 1) {
+    if (!(thicknesses[i] > 0)) {
+      throw new Error(
+        `Wall thickness must be greater than 0; edge ${i} received ${thicknesses[i]}.`,
+      );
+    }
   }
 
   let twiceArea = 0;
@@ -209,7 +223,7 @@ export function computeWallBands(
     inwardNormals.push([-direction[1], direction[0]]);
   }
 
-  const halfThickness = thickness / 2;
+  const halfThickness = thicknesses.map((value) => value / 2);
   const outerMiters: [number, number][] = [];
   const innerMiters: [number, number][] = [];
 
@@ -232,15 +246,23 @@ export function computeWallBands(
         );
       }
 
+      if (
+        Math.abs(halfThickness[previousIndex] - halfThickness[j]) > epsilon
+      ) {
+        throw new Error(
+          `Wall outline has a thickness change at collinear vertex ${j} (thicknesses ${thicknesses[previousIndex]} and ${thicknesses[j]}).`,
+        );
+      }
+
       const outwardNormal = outwardNormals[j];
       const inwardNormal = inwardNormals[j];
       outerMiters.push([
-        vertex[0] + outwardNormal[0] * halfThickness,
-        vertex[1] + outwardNormal[1] * halfThickness,
+        vertex[0] + outwardNormal[0] * halfThickness[j],
+        vertex[1] + outwardNormal[1] * halfThickness[j],
       ]);
       innerMiters.push([
-        vertex[0] + inwardNormal[0] * halfThickness,
-        vertex[1] + inwardNormal[1] * halfThickness,
+        vertex[0] + inwardNormal[0] * halfThickness[j],
+        vertex[1] + inwardNormal[1] * halfThickness[j],
       ]);
       continue;
     }
@@ -248,12 +270,12 @@ export function computeWallBands(
     const previousOutward = outwardNormals[previousIndex];
     const nextOutward = outwardNormals[j];
     const previousOuterPoint: [number, number] = [
-      vertex[0] + previousOutward[0] * halfThickness,
-      vertex[1] + previousOutward[1] * halfThickness,
+      vertex[0] + previousOutward[0] * halfThickness[previousIndex],
+      vertex[1] + previousOutward[1] * halfThickness[previousIndex],
     ];
     const nextOuterPoint: [number, number] = [
-      vertex[0] + nextOutward[0] * halfThickness,
-      vertex[1] + nextOutward[1] * halfThickness,
+      vertex[0] + nextOutward[0] * halfThickness[j],
+      vertex[1] + nextOutward[1] * halfThickness[j],
     ];
     const outerParameter =
       ((nextOuterPoint[0] - previousOuterPoint[0]) * nextDirection[1] -
@@ -267,12 +289,12 @@ export function computeWallBands(
     const previousInward = inwardNormals[previousIndex];
     const nextInward = inwardNormals[j];
     const previousInnerPoint: [number, number] = [
-      vertex[0] + previousInward[0] * halfThickness,
-      vertex[1] + previousInward[1] * halfThickness,
+      vertex[0] + previousInward[0] * halfThickness[previousIndex],
+      vertex[1] + previousInward[1] * halfThickness[previousIndex],
     ];
     const nextInnerPoint: [number, number] = [
-      vertex[0] + nextInward[0] * halfThickness,
-      vertex[1] + nextInward[1] * halfThickness,
+      vertex[0] + nextInward[0] * halfThickness[j],
+      vertex[1] + nextInward[1] * halfThickness[j],
     ];
     const innerParameter =
       ((nextInnerPoint[0] - previousInnerPoint[0]) * nextDirection[1] -

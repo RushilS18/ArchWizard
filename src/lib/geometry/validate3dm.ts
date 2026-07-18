@@ -238,8 +238,11 @@ export async function validatePlacedFile(
           actualCorners.push([location[0], location[1], location[2]]);
         }
 
-        if (vertices.count !== 8) {
-          failures.push(`${spec.name}: expected 8 Brep vertices, got ${vertices.count}`);
+        const expectedCornerCount = 2 * spec.local.footprint.length;
+        if (vertices.count !== expectedCornerCount) {
+          failures.push(
+            `${spec.name}: expected ${expectedCornerCount} Brep vertices, got ${vertices.count}`,
+          );
         }
 
         const consumed = new Set<number>();
@@ -274,16 +277,17 @@ export async function validatePlacedFile(
           );
         }
         cornersOk =
-          vertices.count === 8 &&
-          expectedCorners.length === 8 &&
-          matchedCornerCount === 8 &&
+          vertices.count === expectedCornerCount &&
+          expectedCorners.length === expectedCornerCount &&
+          matchedCornerCount === expectedCornerCount &&
           consumed.size === actualCorners.length;
       }
     }
 
     const pass = layerOk && extrusionOk && solidOk && cornersOk;
+    const expectedCornerCount = 2 * spec.local.footprint.length;
     rows.push(
-      `${spec.name} | ${pass ? 'OK' : 'FAIL'} | layer=${layerName} extrusion=${extrusionOk} solid=${solidOk} corners=${matchedCornerCount}/8`,
+      `${spec.name} | ${pass ? 'OK' : 'FAIL'} | layer=${layerName} extrusion=${extrusionOk} solid=${solidOk} corners=${matchedCornerCount}/${expectedCornerCount}`,
     );
   });
 

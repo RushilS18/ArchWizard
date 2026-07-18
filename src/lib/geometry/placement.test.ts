@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { SolidSpec } from './types';
 import {
   extrusionHeight,
+  placePolygonPrism,
   placePrism,
   placeSolid,
   transformPoint,
@@ -11,6 +12,7 @@ import {
   worldCorners,
   type Footprint,
   type Placement,
+  type Point2,
 } from './placement';
 
 const TOLERANCE = 1e-9;
@@ -419,5 +421,152 @@ describe('placement transforms', () => {
 
     expectPointClose(corners[0], [0, 0, 0]);
     expectPointClose(corners[1], [0, 4, 0]);
+  });
+});
+
+describe('placePolygonPrism', () => {
+  it('places a triangle and reports 6 world corners, AABB, and height', () => {
+    const placed = placePolygonPrism(
+      {
+        type: 'slab',
+        layer: 'A-SLAB',
+        name: 'S-TRI',
+        footprint: [
+          [0, 0],
+          [4, 0],
+          [0, 4],
+        ],
+        zMin: 0,
+        zMax: 3,
+      },
+      { rotationDeg: 0, origin: [0, 0, 0] },
+    );
+
+    expect(worldCorners(placed)).toEqual([
+      [0, 0, 0],
+      [4, 0, 0],
+      [0, 4, 0],
+      [0, 0, 3],
+      [4, 0, 3],
+      [0, 4, 3],
+    ]);
+    expect(worldAABB(placed)).toEqual({
+      min: [0, 0, 0],
+      max: [4, 4, 3],
+    });
+    expect(extrusionHeight(placed)).toBe(3);
+  });
+
+  it('places an L-shape with 12 world corners and the expected AABB', () => {
+    const placed = placePolygonPrism(
+      {
+        type: 'slab',
+        layer: 'A-SLAB',
+        name: 'S-L',
+        footprint: [
+          [0, 0],
+          [6, 0],
+          [6, 4],
+          [3, 4],
+          [3, 6],
+          [0, 6],
+        ],
+        zMin: -0.25,
+        zMax: 0,
+      },
+      { rotationDeg: 0, origin: [0, 0, 0] },
+    );
+
+    expect(worldCorners(placed)).toEqual([
+      [0, 0, -0.25],
+      [6, 0, -0.25],
+      [6, 4, -0.25],
+      [3, 4, -0.25],
+      [3, 6, -0.25],
+      [0, 6, -0.25],
+      [0, 0, 0],
+      [6, 0, 0],
+      [6, 4, 0],
+      [3, 4, 0],
+      [3, 6, 0],
+      [0, 6, 0],
+    ]);
+    expect(worldAABB(placed)).toEqual({
+      min: [0, 0, -0.25],
+      max: [6, 6, 0],
+    });
+  });
+
+  it('throws on a 2-point footprint', () => {
+    expect(() =>
+      placePolygonPrism(
+        {
+          type: 'slab',
+          layer: 'A-SLAB',
+          name: 'S-BAD',
+          footprint: [
+            [0, 0],
+            [1, 0],
+          ],
+          zMin: 0,
+          zMax: 1,
+        },
+        { rotationDeg: 0, origin: [0, 0, 0] },
+      ),
+    ).toThrow(/at least 3 footprint points; received 2/);
+  });
+
+  it('deep-copies the source footprint', () => {
+    const footprint: Point2[] = [
+      [0, 0],
+      [4, 0],
+      [0, 4],
+    ];
+    const placed = placePolygonPrism(
+      {
+        type: 'slab',
+        layer: 'A-SLAB',
+        name: 'S-COPY',
+        footprint,
+        zMin: 0,
+        zMax: 1,
+      },
+      { rotationDeg: 0, origin: [0, 0, 0] },
+    );
+
+    footprint[0][0] = 99;
+    footprint[1][1] = 99;
+
+    expect(placed.local.footprint).toEqual([
+      [0, 0],
+      [4, 0],
+      [0, 4],
+    ]);
+  });
+
+  it('rotates an L-shape 90 degrees counterclockwise', () => {
+    const corners = worldCorners(
+      placePolygonPrism(
+        {
+          type: 'slab',
+          layer: 'A-SLAB',
+          name: 'S-L-ROT',
+          footprint: [
+            [0, 0],
+            [6, 0],
+            [6, 4],
+            [3, 4],
+            [3, 6],
+            [0, 6],
+          ],
+          zMin: -0.25,
+          zMax: 0,
+        },
+        { rotationDeg: 90, origin: [0, 0, 0] },
+      ),
+    );
+
+    expectPointClose(corners[0], [0, 0, -0.25]);
+    expectPointClose(corners[1], [0, 6, -0.25]);
   });
 });

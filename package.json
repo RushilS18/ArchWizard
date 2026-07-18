@@ -10,7 +10,9 @@
     "spike": "tsx scripts/spike-wall.ts",
     "spike:rot": "tsx scripts/spike-rotated.ts",
     "spike:miter": "tsx scripts/spike-miter.ts",
-    "spike:slab": "tsx scripts/spike-slab.ts"
+    "spike:slab": "tsx scripts/spike-slab.ts",
+    "spike:compile": "tsx scripts/spike-compile.ts",
+    "spike:ngon": "tsx scripts/spike-ngon.ts"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

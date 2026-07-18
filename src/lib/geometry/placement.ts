@@ -5,12 +5,10 @@ export interface Placement {
   rotationDeg: number;
 }
 
-export type Footprint = [
-  [number, number],
-  [number, number],
-  [number, number],
-  [number, number],
-]; // 4 local-XY points, counterclockwise, in the order (x0,y0),(x1,y0),(x1,y1),(x0,y1) for a rectangle
+export type Point2 = [number, number];
+
+/** Local-XY polygon vertices (counterclockwise). At least 3 points; enforced at construction. */
+export type Footprint = Point2[];
 
 export interface PlacedSolid {
   type: SolidType;
@@ -71,6 +69,36 @@ export function placePrism(
         [...args.footprint[2]],
         [...args.footprint[3]],
       ],
+      zMin: args.zMin,
+      zMax: args.zMax,
+    },
+    placement,
+  };
+}
+
+export function placePolygonPrism(
+  args: {
+    type: SolidType;
+    layer: string;
+    name: string;
+    footprint: Point2[];
+    zMin: number;
+    zMax: number;
+  },
+  placement: Placement,
+): PlacedSolid {
+  if (args.footprint.length < 3) {
+    throw new Error(
+      `placePolygonPrism requires at least 3 footprint points; received ${args.footprint.length}.`,
+    );
+  }
+
+  return {
+    type: args.type,
+    layer: args.layer,
+    name: args.name,
+    local: {
+      footprint: args.footprint.map((point): Point2 => [point[0], point[1]]),
       zMin: args.zMin,
       zMax: args.zMax,
     },
